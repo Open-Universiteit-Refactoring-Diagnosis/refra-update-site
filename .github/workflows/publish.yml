@@ -1,0 +1,78 @@
+name: Build & Publish p2 Repository
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install UI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xvfb \
+            dbus-x11 \
+            libgtk-3-0
+
+      - name: Install Atlas license
+        env:
+          LICENSE_B64: ${{ secrets.ATLAS_LICENSE_B64 }}
+          KEY_B64: ${{ secrets.ATLAS_LICENSE_KEY_B64 }}
+          KEY_FILENAME: ${{ secrets.ATLAS_LICENSE_FILENAME }}
+        run: |
+          mkdir -p "$HOME/.ensoft/Atlas/license"
+          echo "$LICENSE_B64" | base64 -d > "$HOME/.ensoft/Atlas/license/license"
+          echo "$KEY_B64" | base64 -d > "$HOME/.ensoft/Atlas/license/$KEY_FILENAME"
+          # required to prevent blocking Atlas dialog at first start of Eclipse
+          touch "$HOME/.ensoft/Atlas/footprint"
+          
+      - name: Clone source repository
+        env:
+          TOKEN: ${{ secrets.REFRA_TOKEN }}
+        run: |
+          git clone https://x-access-token:${TOKEN}@github.com/Open-Universiteit-Refactoring-Diagnosis/refra.git source
+
+      - name: Build repository (from source repo)
+        working-directory: source
+        env:
+          NO_AT_BRIDGE: 1
+          GDK_BACKEND: x11
+        run: |
+          dbus-run-session -- \
+          xvfb-run \
+          --auto-servernum \
+          --server-args="-screen 0 1920x1080x24" \
+          mvn clean verify
+          
+      - name: Prepare docs folder
+        run: |
+          rm -rf docs
+          mkdir -p docs/refra/repository
+          cp -r source/nl.ou.refra.repository/target/repository/* docs/refra/repository/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+
+      - name: Show Eclipse log
+        if: failure()
+        run: |
+          cat source/nl.ou.refra.tests/target/work/data/.metadata/.log || true
