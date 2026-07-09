@@ -19,8 +19,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
     steps:
+      - name: Show trigger information
+        run: |
+          echo "Workflow triggered by: ${{ github.event_name }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          
       - name: Checkout repo
         uses: actions/checkout@v6
 
